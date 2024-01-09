@@ -1,0 +1,158 @@
+# OKdo Nano C100 Setup Guide
+
+This guide provides detailed steps to set up the OKdo Nano C100. Follow these steps carefully to ensure a successful setup.
+
+## Prerequisites
+- An OKdo Nano C100
+- A computer to perform the setup
+
+## Step 1: Flashing the Firmware
+
+1. **Download the Firmware**  
+   Visit the [OKdo C100 Getting Started Guide](https://www.okdo.com/us/getting-started/get-started-with-the-c100-nano-csi-cameras/) and download the required firmware for the Jetson Nano.
+
+2. **Flash the Firmware**  
+   - Download [Balena Etcher](https://etcher.balena.io/) for flashing the firmware.
+   - Use Etcher to flash the firmware image you downloaded from the NVIDIA developer site.  
+     Firmware Image: [Jetson Nano SD Card Image](https://developer.nvidia.com/jetson-nano-sd-card-image)
+
+## Step 2: Updating System Files
+
+To make the OKdo C100 behave like a standard Jetson Nano, some system files need to be updated.
+
+```bash
+sudo mv /var/lib/dpkg/info/ /var/lib/dpkg/backup/
+sudo mkdir /var/lib/dpkg/info/
+sudo apt-get update
+sudo apt-get -f install
+sudo mv /var/lib/dpkg/info/* /var/lib/dpkg/backup/
+sudo rm -rf /var/lib/dpkg/info
+sudo mv /var/lib/dpkg/backup/ /var/lib/dpkg/info/
+sudo apt dist-upgrade
+sudo apt-get upgrade
+
+
+# Install Jtop
+
+## https://jetsonhacks.com/2023/02/07/jtop-the-ultimate-tool-for-monitoring-nvidia-jetson-devices/
+sudo apt update
+sudo apt install python3-pip
+
+   - After pip installs:
+sudo pip3 install -U jetson-stats
+
+   - Once pip installs the jetson-stats package, you will need to logout/login or reboot the Jetson.
+   - After rebooting, to run jtop open a Terminal and execute:
+jtop
+
+
+# Make Swapfile so you can use more memory/ram
+
+## https://www.youtube.com/watch?v=JXv39FGi-nw&list=PLXYLzZ3XzIbgvysaNZn2IteAUCEgrIXNN&index=8
+
+git clone https://github.com/JetsonHacksNano/installSwapfile
+cd installSwapfile
+./installSwapfile.sh
+   - a 6 GB swapfile will be installed at /mnt/swapfile
+
+   - To disable the swapfile:
+sudo gedit /etc/fstab
+   - and comment out the line that does the ‘swapon’. Make sure to save the file, reboot and check to make sure that swap is off. 
+
+# Install VSCode
+ ## https://jetsonhacks.com/2019/10/01/jetson-nano-visual-studio-code-python/
+git clone https://github.com/JetsonHacksNano/installVSCode.git
+cd installVSCode
+./installVSCode.sh
+   - When VSCode is installed you should be able to run it.
+
+   - To setup VSCode:
+git clone https://github.com/JetsonHacksNano/CSI-Camera.git
+   ## Bruker denne som en Public code som fungerer til å sette opp VSCode
+   - Åpne python programmet i VSCode
+   - Installer Python slik at alt fungerer
+
+# Bygge Opencv 4.8.0 med cuda support ~7t
+
+##https://www.youtube.com/watch?v=BCNnqTFi-Gs&t=13s
+git clone https://github.com/mdegans/nano_build_opencv
+cd nano_build_opencv
+jtop
+   - Legg merke til cuDNN versjon: Når denne ble laget: 8.2.--.--
+   - Gå ur av jtop
+gedit build_opencv.sh
+
+   - Under configure skal de se slik ut:
+configure () {
+    local CMAKEFLAGS="
+        -D BUILD_EXAMPLES=OFF
+        -D BUILD_opencv_python2=ON
+        -D BUILD_opencv_python3=ON
+        -D CMAKE_BUILD_TYPE=RELEASE
+        -D CMAKE_INSTALL_PREFIX=${PREFIX}
+        -D CUDA_ARCH_BIN=5.3
+        -D CUDA_ARCH_PTX=
+        -D CUDA_FAST_MATH=ON
+        -D CUDNN_VERSION='8.2'
+        -D EIGEN_INCLUDE_PATH=/usr/include/eigen3 
+        -D ENABLE_NEON=ON
+        -D OPENCV_DNN_CUDA=ON
+        -D OPENCV_ENABLE_NONFREE=ON
+        -D OPENCV_EXTRA_MODULES_PATH=/tmp/build_opencv/opencv_contrib/modules
+        -D OPENCV_GENERATE_PKGCONFIG=ON
+        -D WITH_CUBLAS=ON
+        -D WITH_CUDA=ON
+        -D WITH_CUDNN=ON
+        -D WITH_GSTREAMER=ON
+        -D WITH_LIBV4L=ON
+        -D WITH_OPENGL=ON"
+
+   -Neste steg er å bygge, dette tar ca 7-8 timer
+./build_opencv.sh 4.8.0
+
+   - Anbefales å lagre byggfilene.
+   - Flytt også byggfilene fra /tmp til feks home slik at disse ikke blir slettet under reboot
+
+## Få python til å bruke den nye opencv
+which opencv_version
+cd /usr
+sudo find -name opencv_version
+
+./bin/opencv_version
+   - Denne burde retunere den gamle opencv versjon (4.1.1)
+./local/bin/opencv_version
+   - Denne burde retunere den nye opencv versjonen (4.8.0)
+
+python3
+import sys
+print('\n'.join(sys.path))
+exit()
+
+opencv_version -v
+   - Her ser man at opencv er installert til /usr/local/...
+gedit .bashrc
+   -Legg til på bunnen:
+export PYTHONPATH=/usr/local/lib/python3.6/site-packages:$PYTHONPATH
+
+   - test i ny terminal
+python
+import cv2
+print(cv2.__version__)
+
+# Object tracking model
+
+sudo apt-get update
+sudo apt-get install git cmake libpython3-dev python3-numpy
+git clone --recursive --depth=1 https://github.com/dusty-nv/jetson-inference
+cd jetson-inference
+mkdir build
+cd build
+cmake ../
+make -j$(nproc)
+sudo make install
+sudo ldconfig
+
+## Hacky måte å få ssd-net tingy
+cd
+cd jetson-inference/build/aarch64/bin
+./detectnet.py images/peds_1.jpg output_1.jpg
